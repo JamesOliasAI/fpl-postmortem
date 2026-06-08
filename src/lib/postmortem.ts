@@ -1,94 +1,142 @@
 /**
- * FPL Post-Mortem Engine
- * -----------------------
- * Pure functions that turn raw FPL API data into the emotional, shareable
- * "season post-mortem" stats. No network calls here on purpose — networking
- * lives in the API route, calculation lives here so it's easy to test.
+ * FPL Post-Mortem Engine v2
+ * -------------------------
+ * Pure functions: raw FPL API data -> emotional, shareable season stats + chart series.
+ * No network here (lives in fpl.ts). VALIDATED against the live API 2026-06-08.
  *
- * VALIDATED against the real FPL API on 2026-06-08:
- *   - bootstrap-static/  -> total_players = 13,107,732, top-owned players
- *   - entry/{id}/history/ -> per-GW points, points_on_bench, event_transfers_cost, overall_rank
+ * v2 adds (for feature parity with competitors, all from REAL data):
+ *   - per-GW series: your points, your overall_rank, the average manager's GW score
+ *   - "vs the pack": your total vs the real average-manager season total (sum of
+ *     bootstrap event.average_entry_score). HONEST benchmark — NOT a faked projection model.
+ *   - luck/volatility heuristic (clearly a heuristic, never presented as a projection)
  *
- * Bug we already caught & fixed in validation:
- *   total player count MUST come from the live API (bootstrap.total_players),
- *   never hardcoded — a stale guess produces impossible negative percentiles
- *   when a manager's final rank exceeds the guess.
+ * Bug caught earlier & fixed: total player count MUST come from live API, never hardcoded.
  */
 
-// ---- Types describing only the API fields we actually use ----
+// ---- API field subsets we use ----
 export interface GwRow {
   event: number;
   points: number;
   total_points: number;
   overall_rank: number;
   event_transfers: number;
-  event_transfers_cost: number; // points lost to -4 hits
+  event_transfers_cost: number;
   points_on_bench: number;
 }
-
 export interface EntryHistory {
   current: GwRow[];
 }
-
+export interface BootstrapEvent {
+  id: number;
+  average_entry_score: number;
+  highest_score: number;
+  finished: boolean;
+  most_captained: number | null;
+}
 export interface BootstrapElement {
   id: number;
   web_name: string;
-  selected_by_percent: string; // e.g. "62.5"
+  selected_by_percent: string;
 }
-
 export interface Bootstrap {
   total_players: number;
   elements: BootstrapElement[];
+  events: BootstrapEvent[];
 }
-
 export interface Pick {
-  element: number; // player id
+  element: number;
   is_captain: boolean;
-  multiplier: number; // 0 = benched, 1 = playing, 2 = captain, 3 = triple captain
+  multiplier: number;
 }
-
 export interface EntryMeta {
   player_first_name: string;
   player_last_name: string;
-  name: string; // team name
+  name: string;
   summary_overall_points: number;
   summary_overall_rank: number;
 }
 
-// ---- The shape we hand to the UI ----
+// ---- Output shapes ----
+export interface GwPoint {
+  gw: number;
+  points: number;
+  rank: number;
+  avg: number; // average manager's score that GW
+  vsAvg: number; // your points minus average
+}
+
 export interface PostMortem {
   teamName: string;
   managerName: string;
   totalPoints: number;
   finalRank: number;
   totalPlayers: number;
-  beatPercent: number;      // % of all managers you finished above
-  benchTotal: number;       // points left on bench all season
+  beatPercent: number;
+
+  benchTotal: number;
   worstBenchGw: { gw: number; pts: number };
-  hitsTotal: number;        // points lost to -4 transfer hits
+  hitsTotal: number;
   transfersMade: number;
   bestGw: { gw: number; pts: number };
   worstGw: { gw: number; pts: number };
-  templatePlayersOwned: number;   // how many of top-10 owned players were in final squad
-  templatePlayersTotal: number;   // = 10
-  templateVerdict: string;        // the anti-template headline
-  headline: string;               // the one-liner for the share card
+
+  templatePlayersOwned: number;
+  templatePlayersTotal: number;
+  templateVerdict: string;
+
+  // v2
+  series: GwPoint[];
+  avgManagerTotal: number; // the "pack" benchmark (real)
+  vsPack: number; // your total - avg manager total
+  greenArrows: number; // GWs where overall rank improved
+  redArrows: number;
+  luckRating: string; // honest heuristic label
+  luckBlurb: string;
+
+  headline: string;
 }
 
-/** Build the anti-template verdict — the strategic wedge from our roadmap. */
 function templateVerdict(owned: number, total: number): string {
-  if (owned >= 8) return `You played the template — ${owned}/${total} of the most-popular players. Safe, but you can't climb by following the crowd.`;
-  if (owned >= 5) return `Half template, half maverick — ${owned}/${total} popular picks. There's rank to be gained by being braver.`;
+  if (owned >= 8)
+    return `You played the template — ${owned}/${total} of the most-popular players. Safe, but you can't climb by following the crowd.`;
+  if (owned >= 5)
+    return `Half template, half maverick — ${owned}/${total} popular picks. There's rank to be gained by being braver.`;
   return `You backed your own gut — only ${owned}/${total} template players. High risk, high reward.`;
 }
 
 /**
- * Compute the full post-mortem.
- * @param history  /api/entry/{id}/history/
- * @param boot     /api/bootstrap-static/
- * @param meta     /api/entry/{id}/
- * @param finalSquadPlayerIds player ids in the manager's final-GW squad (from picks endpoint)
+ * Luck heuristic — HONEST. We do not have a projection model, so we don't claim one.
+ * We measure how "swingy" the season was: big rank gains/drops and how often you beat
+ * the average. This is explicitly a vibe/volatility read, labelled as such in the UI.
  */
+function luck(series: GwPoint[]): { rating: string; blurb: string } {
+  if (series.length < 2) return { rating: "—", blurb: "Not enough data." };
+  const beatAvg = series.filter((s) => s.vsAvg > 0).length;
+  const pct = beatAvg / series.length;
+  // rank swing magnitude
+  let maxJump = 0;
+  for (let i = 1; i < series.length; i++) {
+    const delta = series[i - 1].rank - series[i].rank; // positive = improved
+    if (Math.abs(delta) > Math.abs(maxJump)) maxJump = delta;
+  }
+  if (pct >= 0.6)
+    return {
+      rating: "On song",
+      blurb: `You beat the average manager in ${beatAvg} of ${series.length} gameweeks. Consistent — not lucky, just good.`,
+    };
+  if (pct <= 0.35)
+    return {
+      rating: "Rough ride",
+      blurb: `You beat the average in only ${beatAvg} of ${series.length} gameweeks. Some of that is variance — but the leaks are fixable.`,
+    };
+  return {
+    rating: "Streaky",
+    blurb: `You beat the average in ${beatAvg} of ${series.length} gameweeks. A volatile season — your biggest single move was ${
+      maxJump > 0 ? "+" : ""
+    }${maxJump.toLocaleString()} rank places.`,
+  };
+}
+
 export function computePostMortem(
   history: EntryHistory,
   boot: Bootstrap,
@@ -99,6 +147,21 @@ export function computePostMortem(
   if (gws.length === 0) {
     throw new Error("No gameweek history for this team — has the season started?");
   }
+
+  // Map GW id -> average score from bootstrap (real "pack" figure)
+  const avgByGw = new Map<number, number>();
+  for (const e of boot.events) avgByGw.set(e.id, e.average_entry_score || 0);
+
+  const series: GwPoint[] = gws.map((g) => {
+    const avg = avgByGw.get(g.event) ?? 0;
+    return {
+      gw: g.event,
+      points: g.points,
+      rank: g.overall_rank,
+      avg,
+      vsAvg: g.points - avg,
+    };
+  });
 
   const benchTotal = gws.reduce((s, g) => s + (g.points_on_bench || 0), 0);
   const worstBenchGw = gws.reduce(
@@ -111,13 +174,8 @@ export function computePostMortem(
   const finalRow = gws[gws.length - 1];
   const totalPoints = finalRow.total_points;
   const finalRank = finalRow.overall_rank;
-
   const totalPlayers = boot.total_players;
-  // % of managers you finished ABOVE. Clamp to [0,100] for safety.
-  const beatPercent = Math.max(
-    0,
-    Math.min(100, 100 * (1 - finalRank / totalPlayers))
-  );
+  const beatPercent = Math.max(0, Math.min(100, 100 * (1 - finalRank / totalPlayers)));
 
   const bestGw = gws.reduce(
     (m, g) => (g.points > m.pts ? { gw: g.event, pts: g.points } : m),
@@ -128,24 +186,33 @@ export function computePostMortem(
     { gw: 0, pts: 99999 }
   );
 
-  // Anti-template: how many of the 10 most-owned players were in the final squad
+  // green/red arrows (rank improved vs prev GW)
+  let greenArrows = 0;
+  let redArrows = 0;
+  for (let i = 1; i < gws.length; i++) {
+    if (gws[i].overall_rank < gws[i - 1].overall_rank) greenArrows++;
+    else if (gws[i].overall_rank > gws[i - 1].overall_rank) redArrows++;
+  }
+
+  // real average-manager season total = sum of finished GW averages
+  const avgManagerTotal = boot.events
+    .filter((e) => e.finished)
+    .reduce((s, e) => s + (e.average_entry_score || 0), 0);
+  const vsPack = totalPoints - avgManagerTotal;
+
+  // anti-template
   const top10 = [...boot.elements]
-    .sort(
-      (a, b) =>
-        parseFloat(b.selected_by_percent) - parseFloat(a.selected_by_percent)
-    )
+    .sort((a, b) => parseFloat(b.selected_by_percent) - parseFloat(a.selected_by_percent))
     .slice(0, 10)
     .map((p) => p.id);
-  const templatePlayersOwned = top10.filter((id) =>
-    finalSquadPlayerIds.includes(id)
-  ).length;
+  const templatePlayersOwned = top10.filter((id) => finalSquadPlayerIds.includes(id)).length;
+
+  const { rating: luckRating, blurb: luckBlurb } = luck(series);
 
   const headline =
-    benchTotal >= hitsTotal && benchTotal > 0
-      ? `You left ${benchTotal} points on your bench this season.`
-      : hitsTotal > 0
-      ? `Your transfer hits cost you ${hitsTotal} points.`
-      : `You finished on ${totalPoints} points — beating ${beatPercent.toFixed(1)}% of the world.`;
+    vsPack >= 0
+      ? `You finished ${vsPack} points above the average manager.`
+      : `You finished ${Math.abs(vsPack)} points below the average manager.`;
 
   return {
     teamName: meta.name,
@@ -163,6 +230,13 @@ export function computePostMortem(
     templatePlayersOwned,
     templatePlayersTotal: 10,
     templateVerdict: templateVerdict(templatePlayersOwned, 10),
+    series,
+    avgManagerTotal,
+    vsPack,
+    greenArrows,
+    redArrows,
+    luckRating,
+    luckBlurb,
     headline,
   };
 }

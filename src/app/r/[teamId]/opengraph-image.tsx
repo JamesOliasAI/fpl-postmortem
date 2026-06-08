@@ -20,8 +20,11 @@ export default async function OgImage({
   try {
     const pm = await getPostMortem(Number(teamId));
     team = pm.teamName;
-    line1 = `${pm.benchTotal} points left on the bench.`;
-    line2 = `${pm.templatePlayersOwned}/10 template players.`;
+    line1 =
+      pm.vsPack >= 0
+        ? `${pm.vsPack} pts above average.`
+        : `${Math.abs(pm.vsPack)} pts below average.`;
+    line2 = `${pm.benchTotal} left on the bench · ${pm.luckRating}.`;
     stat = `${pm.totalPoints.toLocaleString()} pts · beat ${pm.beatPercent.toFixed(
       0
     )}% of the world`;

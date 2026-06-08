@@ -19,6 +19,41 @@ import {
 
 const BASE = "https://fantasy.premierleague.com/api";
 
+// ---- Leaderboard: the global "Overall" league (id 314) = best managers in the world ----
+export interface LeaderRow {
+  rank: number;
+  teamName: string;
+  manager: string;
+  total: number;
+  entry: number;
+}
+
+export async function getTopManagers(limit = 25): Promise<LeaderRow[]> {
+  try {
+    const d = await fplFetch<{
+      standings: {
+        results: {
+          rank: number;
+          entry_name: string;
+          player_name: string;
+          total: number;
+          entry: number;
+        }[];
+      };
+    }>("/leagues-classic/314/standings/", 3600);
+    return (d.standings?.results ?? []).slice(0, limit).map((r) => ({
+      rank: r.rank,
+      teamName: r.entry_name,
+      manager: r.player_name,
+      total: r.total,
+      entry: r.entry,
+    }));
+  } catch {
+    return []; // non-fatal: leaderboard just hides if it fails
+  }
+}
+
+
 // FPL occasionally needs a browser-like UA. Cache bootstrap for 1h (it's big & shared).
 async function fplFetch<T>(path: string, revalidateSeconds = 0): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -41,7 +76,6 @@ function lastGwId(history: EntryHistory): number {
 export async function getPostMortem(teamId: number): Promise<PostMortem> {
   // Bootstrap is large and identical for everyone -> cache 1h.
   const boot = await fplFetch<Bootstrap>("/bootstrap-static/", 3600);
-
   const [meta, history] = await Promise.all([
     fplFetch<EntryMeta>(`/entry/${teamId}/`),
     fplFetch<EntryHistory>(`/entry/${teamId}/history/`),
