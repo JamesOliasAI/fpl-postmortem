@@ -1,65 +1,95 @@
-import Image from "next/image";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function Home() {
+  const router = useRouter();
+  const [teamId, setTeamId] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    const id = teamId.trim().replace(/[^0-9]/g, "");
+    if (!id) {
+      setError("Enter your numeric FPL Team ID.");
+      return;
+    }
+    setLoading(true);
+    router.push(`/r/${id}`);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="flex flex-1 flex-col items-center px-5 py-12 sm:py-20">
+      <div className="w-full max-w-xl">
+        <p className="mb-3 text-sm font-medium uppercase tracking-widest text-emerald-400">
+          Free season report
+        </p>
+        <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
+          How did your FPL season{" "}
+          <span className="text-emerald-400">really</span> go?
+        </h1>
+        <p className="mt-5 text-lg text-zinc-300">
+          The points you left on your bench. What your{" "}
+          <span className="font-semibold text-white">−4 hits</span> actually
+          cost you. Whether you just played the template like everyone else.
+          Enter your Team ID for the brutally honest verdict.
+        </p>
+
+        <form onSubmit={submit} className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <input
+            inputMode="numeric"
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+            placeholder="Your FPL Team ID (e.g. 1234567)"
+            className="flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-lg outline-none placeholder:text-zinc-500 focus:border-emerald-400"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-xl bg-emerald-400 px-6 py-3 text-lg font-semibold text-[#0a0a1f] transition hover:bg-emerald-300 disabled:opacity-60"
+          >
+            {loading ? "Reading…" : "Reveal it →"}
+          </button>
+        </form>
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
+        <details className="mt-5 text-sm text-zinc-400">
+          <summary className="cursor-pointer text-zinc-300 hover:text-white">
+            Where do I find my Team ID?
+          </summary>
+          <p className="mt-2 leading-relaxed">
+            Log in to the official Fantasy Premier League site, click{" "}
+            <span className="text-white">Points</span> or{" "}
+            <span className="text-white">Pick Team</span>, and look at the URL:
+            it contains <code className="text-emerald-300">/entry/XXXXXX/</code>.
+            That number is your Team ID.
           </p>
+        </details>
+
+        <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            ["Bench regret", "The points you watched score from your bench."],
+            ["Hit damage", "What chasing transfers really cost you."],
+            ["Template check", "Did you follow the crowd — or back yourself?"],
+          ].map(([t, d]) => (
+            <div
+              key={t}
+              className="rounded-xl border border-white/10 bg-white/5 p-4"
+            >
+              <p className="font-semibold text-emerald-400">{t}</p>
+              <p className="mt-1 text-sm text-zinc-400">{d}</p>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+        <p className="mt-10 text-xs text-zinc-500">
+          Not affiliated with the Premier League. Uses public FPL data. We never
+          ask for your login.
+        </p>
+      </div>
+    </main>
   );
 }

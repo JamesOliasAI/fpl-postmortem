@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FPL Post-Mortem ⚽
 
-## Getting Started
+A free, brutally honest Fantasy Premier League season report. Enter your Team ID
+→ see the points you left on your bench, what your −4 hits cost you, and whether
+you played the template. The free tool is the **validation vehicle + viral
+distribution engine** for a paid AI FPL assistant (see `ROADMAP.md`).
 
-First, run the development server:
+Built with Next.js (App Router) + Tailwind, deployed on Vercel. Uses the public
+FPL API (no auth). Capture via Supabase + Stripe Payment Links.
 
+---
+
+## What it does
+- `/` — landing page, Team ID input
+- `/r/[teamId]` — server-rendered season post-mortem + share button + conversion block
+- `/r/[teamId]/opengraph-image` — auto-generated shareable PNG card (the viral unit)
+- `/api/waitlist` — captures email signups + paid-CTA click intent
+
+## Validation we're running
+The free report is the bait. The results page pitches a £5/mo (or £35/season)
+AI assistant via **Stripe pre-order** (hard signal) + an **email waitlist**
+(soft signal). **Pass = 25+ real paid commitments.** Only then do we build the
+paid product.
+
+---
+
+## Deploy (one-time)
+
+### 1. Push to GitHub
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git add -A
+git commit -m "feat: FPL post-mortem validation MVP"
+git remote add origin https://github.com/<you>/fpl-postmortem.git
+git branch -M main
+git push -u origin main
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Import to Vercel
+- vercel.com → **Add New → Project → Import** your `fpl-postmortem` repo.
+- Framework preset auto-detects **Next.js**. Click **Deploy**.
+- It goes live at `https://<project>.vercel.app`. The free post-mortem works
+  immediately — no env vars required.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. (Enable money capture) Stripe Payment Links
+- Stripe Dashboard → **Payment Links → Create**:
+  - Link A: recurring **£5 / month** product.
+  - Link B: one-off (or yearly) **£35 / season** product.
+- Copy each link's URL. In Vercel → Settings → Environment Variables, add:
+  - `NEXT_PUBLIC_STRIPE_MONTHLY_URL` = link A
+  - `NEXT_PUBLIC_STRIPE_SEASON_URL` = link B
+- Redeploy. The pre-order buttons now take real money.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 4. (Enable email list) Supabase
+- supabase.com → **New project** (free).
+- SQL Editor → run:
+  ```sql
+  create table waitlist (
+    id bigint generated always as identity primary key,
+    email text,
+    team_id text,
+    kind text not null default 'email',
+    created_at timestamptz not null default now()
+  );
+  ```
+- Project Settings → API → copy **Project URL** + **service_role key**.
+- In Vercel env vars, add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`. Redeploy.
 
-## Learn More
+### 5. Custom domain (optional, only after it validates)
+Add a domain in Vercel → Settings → Domains, and update `NEXT_PUBLIC_SITE_URL`.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Local dev
+```bash
+npm install
+cp .env.example .env.local   # fill in if testing capture locally
+npm run dev                  # http://localhost:3000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Metrics to watch (pass/fail)
+| Signal | Where | Pass |
+|---|---|---|
+| Post-mortems run | Vercel analytics / server logs | 500+ / 2 weeks |
+| Paid-CTA clicks | `waitlist` table, kind=`click_*` | 8%+ of visitors |
+| **Real pre-orders** | **Stripe dashboard** | **25+ (the decision metric)** |
+| Email signups | `waitlist` table, kind=`email` | bonus launch list |
