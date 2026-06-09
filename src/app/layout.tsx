@@ -37,6 +37,18 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#0a0a1f] text-white">
+        <nav className="w-full border-b border-white/5 bg-[#0a0a1f]/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
+            <a href="/" className="font-bold text-emerald-400 text-lg">
+              FPL Post-Mortem
+            </a>
+            <div className="flex items-center gap-4 text-sm text-zinc-400">
+              <a href="/content" className="hover:text-emerald-400 transition">
+                Content
+              </a>
+            </div>
+          </div>
+        </nav>
         {children}
       </body>
     </html>

@@ -2,6 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import dynamic from "next/dynamic";
+
+const NewsBlock = dynamic(() => import("../components/NewsBlock"), {
+  ssr: false,
+});
 
 export default function Home() {
   const router = useRouter();
@@ -89,6 +94,14 @@ export default function Home() {
           Not affiliated with the Premier League. Uses public FPL data. We never
           ask for your login.
         </p>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm text-zinc-400">
+          <a href="/content" className="hover:text-emerald-400 transition">
+            📊 Content Dashboard →
+          </a>
+        </div>
+
+        <NewsBlock />
       </div>
     </main>
   );
